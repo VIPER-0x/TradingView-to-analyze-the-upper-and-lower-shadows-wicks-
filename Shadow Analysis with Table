@@ -1,0 +1,117 @@
+//
+//
+//MIT License
+//
+//Copyright (c) 2025 inner circle viper
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+//@version=6
+indicator('Shadow Analysis with Table', overlay = true)
+
+// Initialize arrays to store data
+var array<float> upperShadows = array.new_float(500, 0.0)
+var array<float> lowerShadows = array.new_float(500, 0.0)
+var array<int> barIndices = array.new_int(500, 0)
+
+// Global variables for state conditions
+var bool isState1 = false
+var bool isState2 = false
+var int state1Count = 0
+var int state2Count = 0
+
+// Update arrays with new data
+VIPER_SUN_SHADOW_FUNCTION() =>
+    for i = 0 to 499 by 1
+        if bar_index - i >= 0 and not na(open[1]) and not na(close[1]) and not na(high[1]) and not na(low[1])
+            upper = high[i] - math.max(open[i], close[i])
+            lower = math.min(open[i], close[i]) - low[i]
+
+            if (upper > 0 and lower > 0) and not barstate.islast
+                array.set(upperShadows, i, upper)
+                array.set(lowerShadows, i, lower)
+                array.set(barIndices, i, bar_index[i])
+                [upper, lower]
+
+[upper, lower] = VIPER_SUN_SHADOW_FUNCTION()
+
+// Create and position table
+var table dataTable = table.new(position.bottom_right, columns = 5, rows = 501, border_width = 1)
+
+// Table headers
+if barstate.isfirst
+    table.cell(dataTable, 0, 0, 'Bar Index', bgcolor = color.blue, text_color = color.white)
+    table.cell(dataTable, 1, 0, 'State', bgcolor = color.blue, text_color = color.white)
+    table.cell(dataTable, 2, 0, 'Shadow Diff', bgcolor = color.blue, text_color = color.white)
+    table.cell(dataTable, 3, 0, 'Shadow Length', bgcolor = color.blue, text_color = color.white)
+    table.cell(dataTable, 4, 0, 'Condition', bgcolor = color.blue, text_color = color.white)
+
+// Process current bar
+processCurrentBar() =>
+    state1 = math.abs(upper) == math.abs(lower) and close[1] > close[2]
+    state2 = math.abs(upper) == math.abs(lower) and close[1] < close[2]
+
+    if state1 or state2
+        state = state1 ? 'State 1' : 'State 2'
+        shadowDiff = math.abs(upper - lower)
+        shadowLength = math.abs(upper)
+
+        // Update table
+        row = state1 ? state1Count + 1 : state2Count + 1
+        
+        table.cell(dataTable, 0, row, str.tostring(bar_index[1]))
+        table.cell(dataTable, 1, row, state)
+        table.cell(dataTable, 2, row, str.tostring(shadowDiff, '#.####'))
+        table.cell(dataTable, 3, row, str.tostring(shadowLength, '#.####'))
+        table.cell(dataTable, 4, row, state1 ? 'Bullish' : 'Bearish', 
+                  bgcolor = state1 ? color.green : color.red,
+                  text_color = color.white)
+        [state1, state2]
+
+[currentState1, currentState2] = processCurrentBar()
+
+// Update global state variables
+isState1 := currentState1
+isState2 := currentState2
+
+// Update counters
+if currentState1
+    state1Count := state1Count + 1
+if currentState2
+    state2Count := state2Count + 1
+
+// Add color to plot based on conditions
+bgcolor(isState1 ? color.rgb(76, 175, 79)  : na)
+bgcolor(isState2 ? color.rgb(255, 0, 0)  : na)
+
+if isState1
+    var line lx1=na 
+    
+    lx1:=line.new(bar_index[100],(open[1]+close[1]/2),bar_index+ 50, (open[1]+close[1]/2),extend=extend.both,style=line.style_dashed,color=color.red)
+
+if isState2
+    var line lx2=na 
+    
+    lx2:=line.new(bar_index[100],(open[1]+close[1]/2),bar_index+ 50, (open[1]+close[1]/2),extend=extend.both,style=line.style_dashed,color=color.rgb(26, 255, 0))
+// Optional: Display counts
+if barstate.islast
+    label.new(bar_index, high, 
+              text="State 1: " + str.tostring(state1Count) + "\nState 2: " + str.tostring(state2Count),
+              style=label.style_label_down,
+              color=color.rgb(33, 149, 243, 100),
+              textcolor=color.white)
